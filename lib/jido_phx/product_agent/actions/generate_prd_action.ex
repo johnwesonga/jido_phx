@@ -1,17 +1,16 @@
 defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
   @moduledoc """
-  Handles the `pm.generate_prd` signal on the ProductManagerAgent.
+  Handles `pm.generate_prd` and `pm.revise_prd` on the ProductManagerAgent.
 
-  Calls the LLM, produces the PRD, then emits `prd.complete` to the
-  parent CoordinatorAgent including run_id so it can be threaded
-  through to PubSub broadcasts.
+  On first run, generates a PRD from requirements + optional Q&A history.
+  On revision, incorporates user feedback into a revised draft.
+  Either way, emits `prd.review_requested` to the parent coordinator.
   """
   use Jido.Action,
     name: "generate_prd",
     schema: [
-      # generate_prd params
       requirements: [type: {:or, [:string, nil]}, default: nil],
-      # revise_prd params
+      qa_history: [type: {:or, [:string, nil]}, default: nil],
       current_prd: [type: {:or, [:string, nil]}, default: nil],
       feedback: [type: {:or, [:string, nil]}, default: nil]
     ]
@@ -52,7 +51,7 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
   Requirements:
   """
 
-  @revise_prompt """
+  @revise_system """
   You are a senior Product Manager. You previously wrote a PRD which a reviewer
   has rejected with the following feedback. Revise the PRD to address the feedback.
   Return the complete revised PRD in the same markdown format.
@@ -66,21 +65,22 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
 
   @impl true
   def run(%{requirements: requirements}, context) when not is_nil(requirements) do
-    prompt = @generate_prompt <> "\n" <> requirements
-    call_and_emit(prompt, context)
+    qa_history = context.state[:qa_history]
+    user_message = build_generate_message(requirements, qa_history)
+    call_and_emit(user_message, @generate_prompt, context)
   end
 
   def run(%{current_prd: current_prd, feedback: feedback}, context) do
-    prompt = @revise_prompt <> "\n" <> feedback <> "\n\nCurrent PRD:\n" <> current_prd
-    call_and_emit(prompt, context)
+    user_message = "Feedback: #{feedback}\n\nCurrent PRD:\n#{current_prd}"
+    call_and_emit(user_message, @revise_system, context)
   end
 
   # ---------------------------------------------------------------------------
   # Private — LLM call via jido_ai / req_llm
   # ---------------------------------------------------------------------------
 
-  defp call_and_emit(prompt, context) do
-    case call_llm(prompt) do
+  defp call_and_emit(user_message, system_prompt, context) do
+    case call_llm(user_message, system_prompt) do
       {:ok, prd} ->
         result_signal =
           Jido.Signal.new!(
@@ -98,7 +98,7 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
     end
   end
 
-  defp call_llm(prompt) do
+  defp call_llm(user_message, system_prompt) do
     # model = Application.get_env(:jido_phx, :ai_model, @default_model)
     ReqLLM.put_key(:openai_api_key, "lm-studio")
 
@@ -110,7 +110,7 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
         max_tokens: 16_384
       })
 
-    case ReqLLM.stream_text(model, prompt) do
+    case ReqLLM.stream_text(model, user_message, system_prompt: system_prompt) do
       {:ok, stream_response} ->
         text = ReqLLM.StreamResponse.text(stream_response)
         log_usage(stream_response)
@@ -119,6 +119,18 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp build_generate_message(requirements, nil), do: requirements
+
+  defp build_generate_message(requirements, qa_history) do
+    """
+    Requirements:
+    #{requirements}
+
+    Additional context from clarification Q&A:
+    #{qa_history}
+    """
   end
 
   defp call_llm_old(requirements) do

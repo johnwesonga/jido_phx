@@ -1,6 +1,7 @@
 defmodule JidoPhxWeb.PipelineLive do
   @moduledoc """
-  LiveView for the PM → TL pipeline with human-in-the-loop review steps.
+  LiveView for the PM → TL pipeline with human-in-the-loop review steps
+  and side-by-side diff view on revision.
 
   Status state machine (mirrors CoordinatorAgent):
     :idle
@@ -10,11 +11,17 @@ defmodule JidoPhxWeb.PipelineLive do
     :awaiting_spec_review   — Spec ready, waiting for user approve/reject
     :complete
     :error
+
+  Diff behaviour:
+    - `prd_previous` is set to the current PRD just before a rejection
+      replaces it with a revision. The review panel shows a diff tab
+      when `prd_previous` is non-nil.
+    - Same pattern for `tech_spec_previous`.
   """
   alias JidoPhx.PipelineBroadcaster
   use JidoPhxWeb, :live_view
 
-  alias JidoPhx.ProductAgent.Pipeline
+  alias JidoPhx.Pipeline
 
   @impl true
   def mount(_params, _session, socket) do
@@ -24,13 +31,14 @@ defmodule JidoPhxWeb.PipelineLive do
        run_id: nil,
        coordinator_pid: nil,
        status: :idle,
+       questions: [],
        prd: nil,
+       prd_previous: nil,
        tech_spec: nil,
-       prd_feedback: "",
-       spec_feedback: "",
-       error: nil,
+       tech_spec_previous: nil,
        prd_filename: nil,
-       tech_spec_filename: nil
+       tech_spec_filename: nil,
+       error: nil
      )}
   end
 
@@ -54,11 +62,14 @@ defmodule JidoPhxWeb.PipelineLive do
          assign(socket,
            run_id: run_id,
            coordinator_pid: coordinator_pid,
-           status: :awaiting_prd,
+           status: :awaiting_clarification,
            requirements: requirements,
            error: nil,
+           questions: [],
            prd: nil,
-           tech_spec: nil
+           prd_previous: nil,
+           tech_spec: nil,
+           tech_spec_previous: nil
          )}
 
       {:error, reason} ->
@@ -67,21 +78,43 @@ defmodule JidoPhxWeb.PipelineLive do
   end
 
   # ---------------------------------------------------------------------------
+  # Events — clarifying questions
+  # ---------------------------------------------------------------------------
+
+  def handle_event("submit_clarifications", params, socket) do
+    # params contains one key per question, keyed by question index string
+    questions = socket.assigns.questions
+
+    answers =
+      questions
+      |> Enum.with_index()
+      |> Map.new(fn {question, idx} ->
+        {question, Map.get(params, "q#{idx}", "")}
+      end)
+
+    Pipeline.provide_clarifications(socket.assigns.coordinator_pid, answers)
+
+    {:noreply, assign(socket, status: :awaiting_prd, questions: [])}
+  end
+
+  # ---------------------------------------------------------------------------
   # Events — PRD review
   # ---------------------------------------------------------------------------
 
   def handle_event("approve_prd", _params, socket) do
     Pipeline.approve_prd(socket.assigns.coordinator_pid)
-    {:noreply, assign(socket, status: :awaiting_spec, prd_feedback: "")}
+    {:noreply, assign(socket, status: :awaiting_spec, prd_previous: nil)}
   end
 
   def handle_event("reject_prd", %{"feedback" => feedback}, socket) do
     Pipeline.reject_prd(socket.assigns.coordinator_pid, feedback)
-    {:noreply, assign(socket, status: :awaiting_prd, prd_feedback: "", prd: nil)}
-  end
 
-  def handle_event("update_prd_feedback", %{"feedback" => value}, socket) do
-    {:noreply, assign(socket, prd_feedback: value)}
+    {:noreply,
+     assign(socket,
+       status: :awaiting_prd,
+       prd_previous: socket.assigns.prd,
+       prd: nil
+     )}
   end
 
   # ---------------------------------------------------------------------------
@@ -90,16 +123,18 @@ defmodule JidoPhxWeb.PipelineLive do
 
   def handle_event("approve_spec", _params, socket) do
     Pipeline.approve_spec(socket.assigns.coordinator_pid)
-    {:noreply, assign(socket, status: :complete, spec_feedback: "")}
+    {:noreply, assign(socket, status: :complete, tech_spec_previous: nil)}
   end
 
   def handle_event("reject_spec", %{"feedback" => feedback}, socket) do
     Pipeline.reject_spec(socket.assigns.coordinator_pid, feedback)
-    {:noreply, assign(socket, status: :awaiting_spec, spec_feedback: "", tech_spec: nil)}
-  end
 
-  def handle_event("update_spec_feedback", %{"feedback" => value}, socket) do
-    {:noreply, assign(socket, spec_feedback: value)}
+    {:noreply,
+     assign(socket,
+       status: :awaiting_spec,
+       tech_spec_previous: socket.assigns.tech_spec,
+       tech_spec: nil
+     )}
   end
 
   # ---------------------------------------------------------------------------
@@ -113,10 +148,13 @@ defmodule JidoPhxWeb.PipelineLive do
        run_id: nil,
        coordinator_pid: nil,
        status: :idle,
+       questions: [],
        prd: nil,
+       prd_previous: nil,
        tech_spec: nil,
-       prd_feedback: "",
-       spec_feedback: "",
+       tech_spec_previous: nil,
+       prd_filename: nil,
+       tech_spec_filename: nil,
        error: nil
      )}
   end
@@ -126,6 +164,17 @@ defmodule JidoPhxWeb.PipelineLive do
   # ---------------------------------------------------------------------------
 
   @impl true
+  def handle_info(
+        {:pipeline_update, %{status: :awaiting_clarification, questions: questions}},
+        socket
+      ) do
+    {:noreply, assign(socket, status: :awaiting_clarification, questions: questions)}
+  end
+
+  def handle_info({:pipeline_update, %{status: :awaiting_prd}}, socket) do
+    {:noreply, assign(socket, status: :awaiting_prd)}
+  end
+
   def handle_info({:pipeline_update, %{status: :awaiting_prd_review, prd: prd}}, socket) do
     {:noreply, assign(socket, status: :awaiting_prd_review, prd: prd)}
   end
@@ -163,7 +212,6 @@ defmodule JidoPhxWeb.PipelineLive do
   end
 
   def handle_info({:pipeline_update, _}, socket), do: {:noreply, socket}
-
   # ---------------------------------------------------------------------------
   # Render
   # ---------------------------------------------------------------------------
@@ -181,6 +229,43 @@ defmodule JidoPhxWeb.PipelineLive do
     """
   end
 
+  defp clarification_panel(assigns) do
+    ~H"""
+    <div class="rounded-xl border border-blue-200 bg-blue-50 p-6 space-y-5">
+      <div>
+        <h2 class="text-xl font-semibold text-blue-900">Clarifying Questions</h2>
+        <p class="text-sm text-blue-700 mt-1">
+          Answer these questions to help the PM agent write a better PRD.
+          You can leave fields blank if not applicable.
+        </p>
+      </div>
+
+      <form phx-submit="submit_clarifications" class="space-y-5">
+        <%= for {question, idx} <- Enum.with_index(@questions) do %>
+          <div class="space-y-1.5">
+            <label class="block text-sm font-medium text-gray-800">
+              {idx + 1}. {question}
+            </label>
+            <textarea
+              name={"q#{idx}"}
+              rows="2"
+              class="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              placeholder="Your answer..."
+            ></textarea>
+          </div>
+        <% end %>
+
+        <button
+          type="submit"
+          class="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+        >
+          Submit answers →
+        </button>
+      </form>
+    </div>
+    """
+  end
+
   defp stage_row(assigns) do
     assigns =
       assigns
@@ -192,29 +277,68 @@ defmodule JidoPhxWeb.PipelineLive do
       <%= cond do %>
         <% @done -> %>
           <span class="w-5 text-center text-green-500">✓</span>
-          <span class="text-gray-600">{@label}</span>
+          <span class="text-xs text-gray-600">{@label}</span>
         <% @active and @review -> %>
           <span class="w-5 text-center text-amber-500">●</span>
-          <span class="text-amber-600 font-medium">{@label}</span>
+          <span class="text-xs text-amber-600 font-medium">{@label}</span>
         <% @active -> %>
           <span class="w-5 text-center text-blue-500 animate-spin inline-block">⟳</span>
-          <span class="text-blue-600 font-medium">{@label}</span>
+          <span class="text-xs text-blue-600 font-medium">{@label}</span>
         <% true -> %>
           <span class="w-5 text-center text-gray-300">○</span>
-          <span class="text-gray-400">{@label}</span>
+          <span class="text-xs text-gray-400">{@label}</span>
       <% end %>
     </div>
     """
   end
 
   defp review_panel(assigns) do
+    assigns = assign(assigns, :has_diff, not is_nil(assigns.previous))
+
     ~H"""
     <div class="space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-6">
       <h2 class="text-xl font-semibold text-amber-900">{@title}</h2>
 
-      <pre class="rounded-lg bg-white border border-gray-200 p-4 text-sm text-gray-900 overflow-x-auto whitespace-pre-wrap max-h-[500px] overflow-y-auto"><%= @content %></pre>
+      <%= if @has_diff do %>
+        <div x-data="{ tab: 'document' }" class="space-y-4">
+          <div class="flex gap-1 border-b border-amber-200">
+            <button
+              x-on:click="tab = 'document'"
+              x-bind:class="tab === 'document' ? 'border-b-2 border-amber-600 text-amber-800 font-medium' : 'text-gray-500 hover:text-gray-700'"
+              class="px-4 py-2 text-sm"
+            >
+              Document
+            </button>
+            <button
+              x-on:click="tab = 'diff'"
+              x-bind:class="tab === 'diff' ? 'border-b-2 border-amber-600 text-amber-800 font-medium' : 'text-gray-500 hover:text-gray-700'"
+              class="px-4 py-2 text-sm"
+            >
+              What changed
+            </button>
+          </div>
 
-      <div class="flex gap-3 items-start">
+          <div x-show="tab === 'document'">
+            <pre class="rounded-lg bg-white border border-gray-200 p-4 text-sm text-gray-900 overflow-x-auto whitespace-pre-wrap max-h-[500px] overflow-y-auto"><%= @content %></pre>
+          </div>
+
+          <div x-show="tab === 'diff'">
+            <div
+              id={"diff-#{:erlang.phash2(@content)}"}
+              phx-hook="DiffViewer"
+              phx-update="ignore"
+              data-old-content={@previous}
+              data-new-content={@content}
+              class="rounded-lg bg-white border border-gray-200 overflow-auto max-h-[500px] text-sm"
+            >
+            </div>
+          </div>
+        </div>
+      <% else %>
+        <pre class="rounded-lg bg-white border border-gray-200 p-4 text-sm text-gray-900 overflow-x-auto whitespace-pre-wrap max-h-[500px] overflow-y-auto"><%= @content %></pre>
+      <% end %>
+
+      <div class="flex gap-3 items-start pt-2">
         <button
           phx-click={@approve_event}
           class="shrink-0 px-5 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"

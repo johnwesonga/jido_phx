@@ -4,35 +4,31 @@ defmodule JidoPhx.ProductAgent.Agents.CoordinatorAgent do
 
   Status state machine:
     :idle
-      → pipeline.start           → :awaiting_prd
+      → pipeline.start                    → :awaiting_clarification
+    :awaiting_clarification
+      → requirements.clarification_needed → :awaiting_clarification (stores questions)
+      → pipeline.clarifications_provided  → :awaiting_prd (merges answers, re-analyzes)
     :awaiting_prd
-      → prd.review_requested     → :awaiting_prd_review
+      → prd.review_requested              → :awaiting_prd_review
     :awaiting_prd_review
-      → prd.approved             → :awaiting_spec
-      → prd.rejected             → :awaiting_prd  (back to PM for revision)
+      → prd.approved                      → :awaiting_spec
+      → prd.rejected                      → :awaiting_prd
     :awaiting_spec
-      → spec.review_requested    → :awaiting_spec_review
+      → spec.review_requested             → :awaiting_spec_review
     :awaiting_spec_review
-      → spec.approved            → :complete
-      → spec.rejected            → :awaiting_spec (back to TL for revision)
-
-  State shape:
-    %{
-      run_id:    String.t(),
-      requirements: String.t(),
-      prd:       String.t() | nil,
-      tech_spec: String.t() | nil,
-      status:    atom()
-    }
+      → spec.approved                     → :complete
+      → spec.rejected                     → :awaiting_spec
   """
 
   use Jido.Agent,
     name: "coordinator_agent",
     schema: [
-      run_id: [type: :string, default: nil],
-      requirements: [type: :string, default: nil],
-      prd: [type: :string, default: nil],
-      tech_spec: [type: :string, default: nil],
+      run_id: [type: {:or, [:string, nil]}, default: nil],
+      requirements: [type: {:or, [:string, nil]}, default: nil],
+      qa_history: [type: {:or, [:string, nil]}, default: nil],
+      questions: [type: {:list, :string}, default: []],
+      prd: [type: {:or, [:string, nil]}, default: nil],
+      tech_spec: [type: {:or, [:string, nil]}, default: nil],
       status: [type: :atom, default: :idle]
     ]
 
@@ -44,13 +40,26 @@ defmodule JidoPhx.ProductAgent.Agents.CoordinatorAgent do
     PrdRejectedAction,
     SpecReviewRequestedAction,
     SpecApprovedAction,
-    SpecRejectedAction
+    SpecRejectedAction,
+    ClarificationNeededAction,
+    ClarificationsProvidedAction,
+    ForwardToPmAction
   }
+
+  require Logger
+
+  def handle_signal(signal, state) do
+    Logger.info("[Coordinator] routing signal: #{signal.type}")
+    {:ok, signal, state}
+  end
 
   def signal_routes(_ctx) do
     [
       {"pipeline.start", StartPipelineAction},
       {"jido.agent.child.started", ChildStartedAction},
+      {"requirements.clarification_needed", ClarificationNeededAction},
+      {"pm.generate_prd", ForwardToPmAction},
+      {"pipeline.clarifications_provided", ClarificationsProvidedAction},
       {"prd.review_requested", PrdReviewRequestedAction},
       {"prd.approved", PrdApprovedAction},
       {"prd.rejected", PrdRejectedAction},

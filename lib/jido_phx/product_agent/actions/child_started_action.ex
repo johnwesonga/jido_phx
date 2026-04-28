@@ -30,12 +30,10 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
 
   @impl true
   def run(%{child_module: ProductManagerAgent, pid: pid, meta: meta}, _context) do
-    Logger.info("child_module: ProductManagerAgent")
-
     signal =
       Jido.Signal.new!(
-        "pm.generate_prd",
-        %{requirements: meta.requirements, run_id: meta.run_id},
+        "pm.analyze_requirements",
+        %{requirements: meta.requirements, qa_history: nil},
         source: "/coordinator"
       )
 
@@ -43,6 +41,8 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
   end
 
   def run(%{child_module: TechnicalLeadAgent, pid: pid, meta: meta}, _context) do
+    Logger.info("[ChildStartedAction] child_module: TechnicalLeadAgent")
+
     signal =
       Jido.Signal.new!(
         "tl.generate_spec",

@@ -6,6 +6,8 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
   child. The child's PID will arrive via `jido.agent.child.started` once
   the runtime has started it.
   """
+  alias JidoPhx.PipelineBroadcaster
+
   use Jido.Action,
     name: "start_pipeline",
     schema: [
@@ -22,6 +24,11 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
   def run(%{requirements: requirements, run_id: run_id}, _context) do
     Logger.info("[StartPipelineAction]requirements #{requirements}")
 
+    PipelineBroadcaster.broadcast(run_id, %{
+      run_id: run_id,
+      status: :awaiting_clarification
+    })
+
     spawn =
       Directive.spawn_agent(
         ProductManagerAgent,
@@ -29,6 +36,13 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
         meta: %{requirements: requirements, run_id: run_id}
       )
 
-    {:ok, %{requirements: requirements, run_id: run_id, status: :awaiting_prd}, [spawn]}
+    {:ok,
+     %{
+       requirements: requirements,
+       run_id: run_id,
+       status: :awaiting_clarification,
+       qa_history: nil,
+       questions: []
+     }, [spawn]}
   end
 end

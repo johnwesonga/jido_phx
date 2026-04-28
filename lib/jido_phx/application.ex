@@ -7,6 +7,20 @@ defmodule JidoPhx.Application do
 
   @impl true
   def start(_type, _args) do
+    :telemetry.attach_many(
+      "jido-pipeline-logger",
+      [
+        [:jido, :agent, :signal, :start],
+        [:jido, :agent, :signal, :stop],
+        [:jido, :agent, :signal, :exception],
+        [:jido, :agent, :action, :start],
+        [:jido, :agent, :action, :stop],
+        [:jido, :agent, :action, :exception]
+      ],
+      &JidoPhx.PipelineTelemetry.handle_event/4,
+      nil
+    )
+
     children = [
       JidoPhxWeb.Telemetry,
       JidoPhx.Repo,

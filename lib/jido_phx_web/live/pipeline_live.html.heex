@@ -1,7 +1,7 @@
 <div class="min-h-screen bg-gray-50">
   <%!-- Top bar --%>
   <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
-    <h1 class="text-xl font-bold text-gray-900">Pipeline</h1>
+    <h1 class="text-xl font-bold text-gray-900">Product Pipeline</h1>
     <%= if @status not in [:idle, :error] do %>
       <button
         phx-click="reset"
@@ -12,7 +12,6 @@
     <% end %>
   </header>
 
-  <%!-- Single column for idle/error, two columns once running --%>
   <%= if @status in [:idle, :error] do %>
     <%!-- Centred requirements form --%>
     <div class="max-w-2xl mx-auto px-8 py-12">
@@ -20,12 +19,13 @@
         <div>
           <label class="block font-semibold text-gray-700 mb-1">Product Requirements</label>
           <p class="text-sm text-gray-500 mb-2">
-            Describe what you want to build — users, features, constraints, timeline.
+            Describe what you want to build — the PM agent will ask clarifying
+            questions before writing the PRD.
           </p>
           <textarea
             name="requirements"
             rows="10"
-            placeholder="e.g. Product: TaskFlow – a team task manager&#10;Target users: small engineering teams (5–30 people)&#10;Key features: Kanban board, GitHub integration, Slack notifications&#10;Constraints: mobile-first, 3 months, 4 engineers"
+            placeholder="e.g. Product: TaskFlow – a team task manager&#10;Target users: small engineering teams&#10;Key features: Kanban board, GitHub integration, Slack notifications"
             class="w-full rounded-lg border border-gray-300 p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           ><%= @requirements %></textarea>
         </div>
@@ -38,14 +38,14 @@
           type="submit"
           class="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
         >
-          Generate →
+          Start →
         </button>
       </form>
     </div>
   <% else %>
     <%!-- Two-column layout --%>
     <div class="flex h-[calc(100vh-57px)]">
-      <%!-- LEFT: requirements side panel (sticky) --%>
+      <%!-- LEFT: requirements side panel --%>
       <aside class="w-72 shrink-0 border-r border-gray-200 bg-white flex flex-col">
         <div class="px-5 py-4 border-b border-gray-100">
           <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -56,24 +56,30 @@
           <pre class="text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed"><%= @requirements %></pre>
         </div>
 
-        <%!-- Progress tracker pinned to bottom of sidebar --%>
+        <%!-- Progress tracker --%>
         <div class="border-t border-gray-100 px-5 py-4 space-y-1">
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Progress</p>
           <.stage_row label="Requirements" done={true} />
           <.stage_row
+            label="Clarifying questions"
+            done={@status not in [:awaiting_clarification]}
+            active={@status == :awaiting_clarification}
+            review={true}
+          />
+          <.stage_row
             label="Writing PRD"
-            done={@status not in [:awaiting_prd]}
+            done={@status not in [:awaiting_clarification, :awaiting_prd]}
             active={@status == :awaiting_prd}
           />
           <.stage_row
             label="PRD review"
-            done={@status not in [:awaiting_prd, :awaiting_prd_review]}
+            done={@status not in [:awaiting_clarification, :awaiting_prd, :awaiting_prd_review]}
             active={@status == :awaiting_prd_review}
             review={true}
           />
           <.stage_row
             label="Writing Tech Spec"
-            done={@status not in [:awaiting_prd, :awaiting_prd_review, :awaiting_spec]}
+            done={@status in [:awaiting_spec_review, :complete]}
             active={@status == :awaiting_spec}
           />
           <.stage_row
@@ -87,11 +93,22 @@
 
       <%!-- RIGHT: active pipeline step --%>
       <main class="flex-1 overflow-y-auto px-8 py-8 space-y-6">
-        <%!-- Generating states --%>
-        <%= if @status == :awaiting_prd do %>
-          <.generating_indicator label="Product Manager agent is writing the PRD..." />
+        <%!-- Analysing requirements --%>
+        <%= if @status == :awaiting_clarification and @questions == [] do %>
+          <.generating_indicator label="PM agent is analysing your requirements..." />
         <% end %>
 
+        <%!-- Clarifying questions form --%>
+        <%= if @status == :awaiting_clarification and @questions != [] do %>
+          <.clarification_panel questions={@questions} />
+        <% end %>
+
+        <%!-- Generating PRD --%>
+        <%= if @status == :awaiting_prd do %>
+          <.generating_indicator label="PM agent is writing the PRD..." />
+        <% end %>
+
+        <%!-- Generating Tech Spec --%>
         <%= if @status == :awaiting_spec do %>
           <.generating_indicator label="Technical Lead agent is writing the Tech Spec..." />
         <% end %>
@@ -101,6 +118,7 @@
           <.review_panel
             title="Review: Product Requirements Document"
             content={@prd}
+            previous={@prd_previous}
             approve_event="approve_prd"
             reject_event="reject_prd"
           />
@@ -111,6 +129,7 @@
           <.review_panel
             title="Review: Technical Specification"
             content={@tech_spec}
+            previous={@tech_spec_previous}
             approve_event="approve_spec"
             reject_event="reject_spec"
           />
@@ -121,7 +140,6 @@
           <div class="rounded-lg bg-green-50 border border-green-200 p-4 text-green-800 font-medium">
             ✓ Pipeline complete — both documents approved and saved.
           </div>
-
           <.doc_section
             title="Product Requirements Document"
             content={@prd}
