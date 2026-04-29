@@ -1,27 +1,11 @@
 defmodule JidoPhxWeb.PipelineLive do
   @moduledoc """
-  LiveView for the PM → TL pipeline with human-in-the-loop review steps
-  and side-by-side diff view on revision.
-
-  Status state machine (mirrors CoordinatorAgent):
-    :idle
-    :awaiting_prd           — PM agent is generating
-    :awaiting_prd_review    — PRD ready, waiting for user approve/reject
-    :awaiting_spec          — TL agent is generating
-    :awaiting_spec_review   — Spec ready, waiting for user approve/reject
-    :complete
-    :error
-
-  Diff behaviour:
-    - `prd_previous` is set to the current PRD just before a rejection
-      replaces it with a revision. The review panel shows a diff tab
-      when `prd_previous` is non-nil.
-    - Same pattern for `tech_spec_previous`.
+  LiveView for the PM → TL → Estimator pipeline with clarifying questions,
+  human-in-the-loop review steps, and side-by-side diff view on revision.
   """
-  alias JidoPhx.ProductAgent.PipelineBroadcaster
   use JidoPhxWeb, :live_view
 
-  alias JidoPhx.Pipeline
+  alias JidoPhx.ProductAgent.{Pipeline, PipelineBroadcaster, PipelineRuns}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -36,10 +20,13 @@ defmodule JidoPhxWeb.PipelineLive do
        prd_previous: nil,
        tech_spec: nil,
        tech_spec_previous: nil,
+       estimate: nil,
        prd_filename: nil,
        tech_spec_filename: nil,
        estimate_filename: nil,
-       error: nil
+       error: nil,
+       show_history: false,
+       history_runs: []
      )}
   end
 
@@ -84,18 +71,14 @@ defmodule JidoPhxWeb.PipelineLive do
   # ---------------------------------------------------------------------------
 
   def handle_event("submit_clarifications", params, socket) do
-    # params contains one key per question, keyed by question index string
-    questions = socket.assigns.questions
-
     answers =
-      questions
+      socket.assigns.questions
       |> Enum.with_index()
       |> Map.new(fn {question, idx} ->
         {question, Map.get(params, "q#{idx}", "")}
       end)
 
     Pipeline.provide_clarifications(socket.assigns.coordinator_pid, answers)
-
     {:noreply, assign(socket, status: :awaiting_prd, questions: [])}
   end
 
@@ -125,7 +108,7 @@ defmodule JidoPhxWeb.PipelineLive do
 
   def handle_event("approve_spec", _params, socket) do
     Pipeline.approve_spec(socket.assigns.coordinator_pid)
-    {:noreply, assign(socket, status: :complete, tech_spec_previous: nil)}
+    {:noreply, assign(socket, status: :awaiting_estimate, tech_spec_previous: nil)}
   end
 
   def handle_event("reject_spec", %{"feedback" => feedback}, socket) do
@@ -137,6 +120,23 @@ defmodule JidoPhxWeb.PipelineLive do
        tech_spec_previous: socket.assigns.tech_spec,
        tech_spec: nil
      )}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Events — history panel
+  # ---------------------------------------------------------------------------
+
+  def handle_event("toggle_history", _params, socket) do
+    if socket.assigns.show_history do
+      {:noreply, assign(socket, show_history: false, history_runs: [])}
+    else
+      runs = PipelineRuns.list()
+      {:noreply, assign(socket, show_history: true, history_runs: runs)}
+    end
+  end
+
+  def handle_event("close_history", _params, socket) do
+    {:noreply, assign(socket, show_history: false, history_runs: [])}
   end
 
   # ---------------------------------------------------------------------------
@@ -155,15 +155,18 @@ defmodule JidoPhxWeb.PipelineLive do
        prd_previous: nil,
        tech_spec: nil,
        tech_spec_previous: nil,
+       estimate: nil,
        prd_filename: nil,
        tech_spec_filename: nil,
        estimate_filename: nil,
-       error: nil
+       error: nil,
+       show_history: false,
+       history_runs: []
      )}
   end
 
   # ---------------------------------------------------------------------------
-  # PubSub — real-time updates from coordinator actions
+  # PubSub
   # ---------------------------------------------------------------------------
 
   @impl true
@@ -211,13 +214,300 @@ defmodule JidoPhxWeb.PipelineLive do
   end
 
   def handle_info({:pipeline_update, _}, socket), do: {:noreply, socket}
+
   # ---------------------------------------------------------------------------
   # Render
   # ---------------------------------------------------------------------------
 
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="min-h-screen bg-gray-50">
+      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
+        <h1 class="text-xl font-bold text-gray-900">Product Pipeline</h1>
+        <div class="flex items-center gap-3">
+          <button
+            phx-click="toggle_history"
+            class={"text-sm px-3 py-1.5 rounded-lg border #{if @show_history, do: "bg-gray-900 text-white border-gray-900", else: "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}"}
+          >
+            ≡ History
+          </button>
+          <%= if @status not in [:idle, :error] do %>
+            <button
+              phx-click="reset"
+              class="text-sm px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
+            >
+              ↩ Start over
+            </button>
+          <% end %>
+        </div>
+      </header>
+
+      <%!-- History slide-in panel --%>
+      <%= if @show_history do %>
+        <div class="fixed inset-0 z-40 flex justify-end" phx-click="close_history">
+          <%!-- Backdrop --%>
+          <div class="absolute inset-0 bg-black/30"></div>
+
+          <%!-- Panel --%>
+          <div
+            class="relative z-50 w-[480px] h-full bg-white shadow-xl flex flex-col"
+            phx-click-away="close_history"
+          >
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h2 class="text-lg font-semibold text-gray-900">Pipeline History</h2>
+              <button
+                phx-click="close_history"
+                class="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              <%= if @history_runs == [] do %>
+                <p class="text-sm text-gray-400 text-center py-12">No pipeline runs yet.</p>
+              <% else %>
+                <%= for run <- @history_runs do %>
+                  <.history_row run={run} />
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
+      <%= if @status in [:idle, :error] do %>
+        <div class="max-w-2xl mx-auto px-8 py-12">
+          <form phx-submit="generate" class="space-y-4">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Product Requirements</label>
+              <p class="text-sm text-gray-500 mb-2">
+                The PM agent will ask clarifying questions before writing the PRD.
+              </p>
+              <textarea
+                name="requirements"
+                rows="10"
+                placeholder="e.g. Product: TaskFlow – a team task manager&#10;Target users: small engineering teams&#10;Key features: Kanban board, GitHub integration, Slack notifications"
+                class="w-full rounded-lg border border-gray-300 p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              ><%= @requirements %></textarea>
+            </div>
+
+            <%= if @error do %>
+              <p class="text-red-500 text-sm">{@error}</p>
+            <% end %>
+
+            <button
+              type="submit"
+              class="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+            >
+              Start →
+            </button>
+          </form>
+        </div>
+      <% else %>
+        <div class="flex h-[calc(100vh-57px)]">
+          <%!-- LEFT: requirements + progress --%>
+          <aside class="w-72 shrink-0 border-r border-gray-200 bg-white flex flex-col">
+            <div class="px-5 py-4 border-b border-gray-100">
+              <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Requirements
+              </h2>
+            </div>
+            <div class="flex-1 overflow-y-auto px-5 py-4">
+              <pre class="text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed"><%= @requirements %></pre>
+            </div>
+
+            <div class="border-t border-gray-100 px-5 py-4 space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Progress</p>
+              <.stage_row label="Requirements" done={true} />
+              <.stage_row
+                label="Clarifying questions"
+                done={@status not in [:awaiting_clarification]}
+                active={@status == :awaiting_clarification}
+                review={true}
+              />
+              <.stage_row
+                label="Writing PRD"
+                done={@status not in [:awaiting_clarification, :awaiting_prd]}
+                active={@status == :awaiting_prd}
+              />
+              <.stage_row
+                label="PRD review"
+                done={@status not in [:awaiting_clarification, :awaiting_prd, :awaiting_prd_review]}
+                active={@status == :awaiting_prd_review}
+                review={true}
+              />
+              <.stage_row
+                label="Writing Tech Spec"
+                done={@status in [:awaiting_spec_review, :awaiting_estimate, :complete]}
+                active={@status == :awaiting_spec}
+              />
+              <.stage_row
+                label="Tech Spec review"
+                done={@status in [:awaiting_estimate, :complete]}
+                active={@status == :awaiting_spec_review}
+                review={true}
+              />
+              <.stage_row
+                label="Generating estimate"
+                done={@status == :complete}
+                active={@status == :awaiting_estimate}
+              />
+            </div>
+          </aside>
+
+          <%!-- RIGHT: active step --%>
+          <main class="flex-1 overflow-y-auto px-8 py-8 space-y-6">
+            <%= if @status == :awaiting_clarification and @questions == [] do %>
+              <.generating_indicator label="PM agent is analysing your requirements..." />
+            <% end %>
+
+            <%= if @status == :awaiting_clarification and @questions != [] do %>
+              <.clarification_panel questions={@questions} />
+            <% end %>
+
+            <%= if @status == :awaiting_prd do %>
+              <.generating_indicator label="PM agent is writing the PRD..." />
+            <% end %>
+
+            <%= if @status == :awaiting_spec do %>
+              <.generating_indicator label="Technical Lead agent is writing the Tech Spec..." />
+            <% end %>
+
+            <%= if @status == :awaiting_estimate do %>
+              <.generating_indicator label="Estimator agent is generating story points..." />
+            <% end %>
+
+            <%= if @status == :awaiting_prd_review and @prd do %>
+              <.review_panel
+                title="Review: Product Requirements Document"
+                content={@prd}
+                previous={@prd_previous}
+                approve_event="approve_prd"
+                reject_event="reject_prd"
+              />
+            <% end %>
+
+            <%= if @status == :awaiting_spec_review and @tech_spec do %>
+              <.review_panel
+                title="Review: Technical Specification"
+                content={@tech_spec}
+                previous={@tech_spec_previous}
+                approve_event="approve_spec"
+                reject_event="reject_spec"
+              />
+            <% end %>
+
+            <%= if @status == :complete do %>
+              <div class="rounded-lg bg-green-50 border border-green-200 p-4 text-green-800 font-medium">
+                ✓ Pipeline complete — all three documents saved.
+              </div>
+              <.doc_section
+                title="Product Requirements Document"
+                content={@prd}
+                filename={@prd_filename}
+              />
+              <.doc_section
+                title="Technical Specification"
+                content={@tech_spec}
+                filename={@tech_spec_filename}
+              />
+              <.doc_section
+                title="Engineering Estimate"
+                content={@estimate}
+                filename={@estimate_filename}
+              />
+            <% end %>
+          </main>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
   # ---------------------------------------------------------------------------
   # Components
   # ---------------------------------------------------------------------------
+
+  defp history_row(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <.history_status_badge status={@run.status} />
+        <span class="text-xs text-gray-400 shrink-0">{format_timestamp(@run.inserted_at)}</span>
+      </div>
+
+      <p class="text-sm text-gray-700 line-clamp-2">{@run.requirements_summary}</p>
+
+      <div class="font-mono text-xs text-gray-400">{String.slice(@run.id, 0, 16)}…</div>
+
+      <%= if @run.status == "complete" do %>
+        <div class="flex gap-3 pt-1">
+          <%= if @run.prd_filename do %>
+            <a
+              href={"/pipeline_outputs/#{@run.prd_filename}"}
+              download
+              class="text-xs text-blue-600 hover:underline"
+            >
+              ↓ PRD
+            </a>
+          <% end %>
+          <%= if @run.tech_spec_filename do %>
+            <a
+              href={"/pipeline_outputs/#{@run.tech_spec_filename}"}
+              download
+              class="text-xs text-blue-600 hover:underline"
+            >
+              ↓ Tech Spec
+            </a>
+          <% end %>
+          <%= if @run.estimate_filename do %>
+            <a
+              href={"/pipeline_outputs/#{@run.estimate_filename}"}
+              download
+              class="text-xs text-blue-600 hover:underline"
+            >
+              ↓ Estimate
+            </a>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp history_status_badge(assigns) do
+    {bg, text, label} =
+      case assigns.status do
+        "complete" -> {"bg-green-100", "text-green-700", "Complete"}
+        "awaiting_prd_review" -> {"bg-amber-100", "text-amber-700", "PRD review"}
+        "awaiting_spec_review" -> {"bg-amber-100", "text-amber-700", "Spec review"}
+        "awaiting_clarification" -> {"bg-blue-100", "text-blue-700", "Clarifying"}
+        "awaiting_prd" -> {"bg-blue-100", "text-blue-700", "Writing PRD"}
+        "awaiting_spec" -> {"bg-blue-100", "text-blue-700", "Writing Spec"}
+        "awaiting_estimate" -> {"bg-blue-100", "text-blue-700", "Estimating"}
+        _ -> {"bg-gray-100", "text-gray-600", assigns.status}
+      end
+
+    assigns = assign(assigns, bg: bg, text: text, label: label)
+
+    ~H"""
+    <span class={"inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium #{@bg} #{@text}"}>
+      {@label}
+    </span>
+    """
+  end
+
+  defp format_timestamp(nil), do: ""
+
+  defp format_timestamp(dt) do
+    dt
+    |> DateTime.from_naive!("Etc/UTC")
+    |> Calendar.strftime("%d %b %Y, %H:%M")
+  rescue
+    _ -> ""
+  end
 
   defp generating_indicator(assigns) do
     ~H"""
@@ -234,8 +524,7 @@ defmodule JidoPhxWeb.PipelineLive do
       <div>
         <h2 class="text-xl font-semibold text-blue-900">Clarifying Questions</h2>
         <p class="text-sm text-blue-700 mt-1">
-          Answer these questions to help the PM agent write a better PRD.
-          You can leave fields blank if not applicable.
+          Answer these to help the PM agent write a better PRD. Leave blank if not applicable.
         </p>
       </div>
 
