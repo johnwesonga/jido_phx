@@ -1,13 +1,9 @@
 defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
   @moduledoc """
-  Handles the `pipeline.start` signal on the CoordinatorAgent.
+  Handles `pipeline.start` on the CoordinatorAgent.
 
-  Records the user requirements in state and spawns a ProductManagerAgent
-  child. The child's PID will arrive via `jido.agent.child.started` once
-  the runtime has started it.
+  Creates a PipelineRun record then spawns the PM child.
   """
-  alias JidoPhx.PipelineBroadcaster
-
   use Jido.Action,
     name: "start_pipeline",
     schema: [
@@ -18,11 +14,19 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
   require Logger
 
   alias Jido.Agent.Directive
-  alias JidoPhx.ProductAgent.Agents.ProductManagerAgent
+  alias JidoPhx.ProductAgent.{PipelineBroadcaster, PipelineRuns}
 
   @impl true
   def run(%{requirements: requirements, run_id: run_id}, _context) do
-    Logger.info("[StartPipelineAction]requirements #{requirements}")
+    case PipelineRuns.create(run_id, requirements) do
+      {:ok, _} ->
+        Logger.info("[StartPipelineAction] created run #{run_id}")
+
+      {:error, reason} ->
+        Logger.warning(
+          "[StartPipelineAction] failed to persist run #{run_id}: #{inspect(reason)}"
+        )
+    end
 
     PipelineBroadcaster.broadcast(run_id, %{
       run_id: run_id,
@@ -31,7 +35,7 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
 
     spawn =
       Directive.spawn_agent(
-        ProductManagerAgent,
+        JidoPhx.ProductAgent.Agents.ProductManagerAgent,
         :pm_agent,
         meta: %{requirements: requirements, run_id: run_id}
       )

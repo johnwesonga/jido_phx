@@ -14,7 +14,7 @@ defmodule JidoPhx.ProductAgent.Actions.SpecCompleteAction do
 
   @output_dir "priv/static/pipeline_outputs"
 
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
 
   @impl true
   def run(%{tech_spec: tech_spec, run_id: run_id}, context) do

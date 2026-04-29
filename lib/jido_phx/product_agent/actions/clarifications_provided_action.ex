@@ -11,7 +11,7 @@ defmodule JidoPhx.ProductAgent.Actions.ClarificationsProvidedAction do
   so it can generate targeted follow-ups or, once satisfied, emit
   `pm.generate_prd` instead.
   """
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
 
   use Jido.Action,
     name: "clarifications_provided",

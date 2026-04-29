@@ -20,6 +20,7 @@ defmodule JidoPhxWeb.Router do
     get "/", PageController, :home
     live "/counter/:id", CounterLive
     live "/pipeline", PipelineLive
+    live "/pipeline/history", PipelineHistoryLive
   end
 
   # Other scopes may use custom stacks.

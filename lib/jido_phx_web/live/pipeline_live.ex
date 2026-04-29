@@ -18,7 +18,7 @@ defmodule JidoPhxWeb.PipelineLive do
       when `prd_previous` is non-nil.
     - Same pattern for `tech_spec_previous`.
   """
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
   use JidoPhxWeb, :live_view
 
   alias JidoPhx.Pipeline

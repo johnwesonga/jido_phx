@@ -12,8 +12,6 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
 
   # Ignore child.started for any other child module
 
-  alias JidoPhx.ProductAgent.Agents.EstimatorAgent
-
   use Jido.Action,
     name: "child_started",
     schema: [
@@ -26,7 +24,7 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
     ]
 
   alias Jido.Agent.Directive
-  alias JidoPhx.ProductAgent.Agents.{ProductManagerAgent, TechnicalLeadAgent}
+  alias JidoPhx.ProductAgent.Agents.{ProductManagerAgent, TechnicalLeadAgent, EstimatorAgent}
 
   require Logger
 

@@ -6,7 +6,8 @@ defmodule JidoPhx.ProductAgent.Actions.PrdReviewRequestedAction do
   Stores the draft and broadcasts to PubSub so the LiveView can render
   the review UI. The pipeline pauses here until the user approves or rejects.
   """
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.Actions.PersistStatus
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
 
   use Jido.Action,
     name: "prd_review_requested",
@@ -17,6 +18,7 @@ defmodule JidoPhx.ProductAgent.Actions.PrdReviewRequestedAction do
   @impl true
   def run(%{prd: prd}, context) do
     run_id = context.state.run_id
+    PersistStatus.call(run_id, :awaiting_prd_review)
 
     PipelineBroadcaster.broadcast(run_id, %{
       run_id: run_id,

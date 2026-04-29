@@ -1,4 +1,4 @@
-defmodule JidoPhx.PipelineBroadcaster do
+defmodule JidoPhx.ProductAgent.PipelineBroadcaster do
   @moduledoc """
   Broadcasts pipeline stage updates over Phoenix.PubSub.
 

@@ -5,7 +5,7 @@ defmodule JidoPhx.ProductAgent.Actions.PrdApprovedAction do
   Fired by the LiveView when the user clicks Approve on the PRD review.
   Spawns the TechnicalLeadAgent child to begin writing the Tech Spec.
   """
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
   alias JidoPhx.ProductAgent.Agents.TechnicalLeadAgent
 
   use Jido.Action,

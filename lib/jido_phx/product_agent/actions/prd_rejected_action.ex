@@ -14,7 +14,7 @@ defmodule JidoPhx.ProductAgent.Actions.PrdRejectedAction do
     ]
 
   alias Jido.Agent.Directive
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
 
   @impl true
   def run(%{feedback: feedback, pm_pid: pm_pid}, context) do

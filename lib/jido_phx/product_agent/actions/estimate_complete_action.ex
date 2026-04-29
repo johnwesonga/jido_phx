@@ -2,8 +2,8 @@ defmodule JidoPhx.ProductAgent.Actions.EstimateCompleteAction do
   @moduledoc """
   Handles `estimate.complete` on the CoordinatorAgent.
 
-  Writes all three documents to disk and broadcasts :complete to PubSub.
-  This is the terminal action in the pipeline.
+  Writes all three documents to disk, updates the PipelineRun record
+  to :complete, and broadcasts the final status to PubSub.
   """
   use Jido.Action,
     name: "estimate_complete",
@@ -11,9 +11,11 @@ defmodule JidoPhx.ProductAgent.Actions.EstimateCompleteAction do
       estimate: [type: :string, required: true]
     ]
 
-  @output_dir "priv/static/pipeline_outputs"
+  require Logger
 
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.{PipelineBroadcaster, PipelineRuns}
+
+  @output_dir "priv/static/pipeline_outputs"
 
   @impl true
   def run(%{estimate: estimate}, context) do
@@ -31,18 +33,32 @@ defmodule JidoPhx.ProductAgent.Actions.EstimateCompleteAction do
     File.write!(Path.join(dir, tech_spec_filename), tech_spec)
     File.write!(Path.join(dir, estimate_filename), estimate)
 
+    full_prd_path = "#{run_id}/#{prd_filename}"
+    full_spec_path = "#{run_id}/#{tech_spec_filename}"
+    full_estimate_path = "#{run_id}/#{estimate_filename}"
+
+    case PipelineRuns.complete(run_id, full_prd_path, full_spec_path, full_estimate_path) do
+      {:ok, _} ->
+        Logger.info("[EstimateCompleteAction] run #{run_id} marked complete")
+
+      {:error, reason} ->
+        Logger.warning(
+          "[EstimateCompleteAction] failed to update run #{run_id}: #{inspect(reason)}"
+        )
+    end
+
     PipelineBroadcaster.broadcast(run_id, %{
       run_id: run_id,
       status: :complete,
       prd: prd,
       tech_spec: tech_spec,
       estimate: estimate,
-      prd_filename: "#{run_id}/#{prd_filename}",
-      tech_spec_filename: "#{run_id}/#{tech_spec_filename}",
-      estimate_filename: "#{run_id}/#{estimate_filename}"
+      prd_filename: full_prd_path,
+      tech_spec_filename: full_spec_path,
+      estimate_filename: full_estimate_path
     })
 
-    {:ok, %{estimate: estimate, estimate_filename: estimate_filename, status: :complete}}
+    {:ok, %{estimate: estimate, status: :complete}}
   end
 
   defp timestamp do

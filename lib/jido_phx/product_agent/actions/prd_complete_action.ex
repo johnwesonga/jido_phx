@@ -6,7 +6,7 @@ defmodule JidoPhx.ProductAgent.Actions.PrdCompleteAction do
   This action stores the PRD in coordinator state and spawns a
   TechnicalLeadAgent child, passing the PRD via `meta`.
   """
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
 
   use Jido.Action,
     name: "prd_complete",

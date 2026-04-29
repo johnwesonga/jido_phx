@@ -9,7 +9,7 @@ defmodule JidoPhx.ProductAgent.Actions.SpecApprovedAction do
     name: "spec_approved",
     schema: []
 
-  alias JidoPhx.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.PipelineBroadcaster
   alias Jido.Agent.Directive
 
   @impl true
