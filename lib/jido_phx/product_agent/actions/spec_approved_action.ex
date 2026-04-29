@@ -10,40 +10,24 @@ defmodule JidoPhx.ProductAgent.Actions.SpecApprovedAction do
     schema: []
 
   alias JidoPhx.PipelineBroadcaster
-
-  @output_dir "priv/static/pipeline_outputs"
+  alias Jido.Agent.Directive
 
   @impl true
   def run(_params, context) do
-    %{run_id: run_id, prd: prd, tech_spec: tech_spec} = context.state
-    ts = timestamp()
-
-    dir = Path.join(@output_dir, run_id)
-    File.mkdir_p!(dir)
-    prd_filename = "prd_#{ts}.md"
-    tech_spec_filename = "tech_spec_#{ts}.md"
-
-    File.write!(Path.join(dir, prd_filename), prd)
-    File.write!(Path.join(dir, tech_spec_filename), tech_spec)
+    %{run_id: run_id, tech_spec: tech_spec} = context.state
 
     PipelineBroadcaster.broadcast(run_id, %{
       run_id: run_id,
-      status: :complete,
-      prd: prd,
-      tech_spec: tech_spec,
-      prd_filename: "#{run_id}/#{prd_filename}",
-      tech_spec_filename: "#{run_id}/#{tech_spec_filename}"
+      status: :awaiting_estimate
     })
 
-    {:ok, %{status: :complete}}
-  end
+    spawn =
+      Directive.spawn_agent(
+        JidoPhx.ProductAgent.Agents.EstimatorAgent,
+        :estimator_agent,
+        meta: %{tech_spec: tech_spec, run_id: run_id}
+      )
 
-  defp timestamp do
-    DateTime.utc_now()
-    |> DateTime.to_iso8601()
-    # "2026-04-27T14:32:01"
-    |> String.slice(0, 19)
-    # "2026-04-27T14-32-01" — safe for filenames
-    |> String.replace(":", "-")
+    {:ok, %{status: :awaiting_estimate}, [spawn]}
   end
 end

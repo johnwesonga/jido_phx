@@ -20,6 +20,8 @@ defmodule JidoPhx.ProductAgent.Agents.CoordinatorAgent do
       → spec.rejected                     → :awaiting_spec
   """
 
+  alias JidoPhx.ProductAgent.Actions.EstimateCompleteAction
+
   use Jido.Agent,
     name: "coordinator_agent",
     schema: [
@@ -48,6 +50,7 @@ defmodule JidoPhx.ProductAgent.Agents.CoordinatorAgent do
 
   require Logger
 
+  @spec handle_signal(any(), any()) :: {:ok, any(), any()}
   def handle_signal(signal, state) do
     Logger.info("[Coordinator] routing signal: #{signal.type}")
     {:ok, signal, state}
@@ -65,7 +68,8 @@ defmodule JidoPhx.ProductAgent.Agents.CoordinatorAgent do
       {"prd.rejected", PrdRejectedAction},
       {"spec.review_requested", SpecReviewRequestedAction},
       {"spec.approved", SpecApprovedAction},
-      {"spec.rejected", SpecRejectedAction}
+      {"spec.rejected", SpecRejectedAction},
+      {"estimate.complete", EstimateCompleteAction}
     ]
   end
 end

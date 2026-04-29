@@ -88,6 +88,11 @@
             active={@status == :awaiting_spec_review}
             review={true}
           />
+          <.stage_row
+            label="Generating estimate"
+            done={@status == :complete}
+            active={@status == :awaiting_estimate}
+          />
         </div>
       </aside>
 
@@ -138,7 +143,7 @@
         <%!-- Complete --%>
         <%= if @status == :complete do %>
           <div class="rounded-lg bg-green-50 border border-green-200 p-4 text-green-800 font-medium">
-            ✓ Pipeline complete — both documents approved and saved.
+            ✓ Pipeline complete — all three documents saved.
           </div>
           <.doc_section
             title="Product Requirements Document"
@@ -149,6 +154,11 @@
             title="Technical Specification"
             content={@tech_spec}
             filename={@tech_spec_filename}
+          />
+          <.doc_section
+            title="Engineering Estimate"
+            content={@estimate}
+            filename={@estimate_filename}
           />
         <% end %>
       </main>

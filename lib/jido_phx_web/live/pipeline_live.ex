@@ -38,6 +38,7 @@ defmodule JidoPhxWeb.PipelineLive do
        tech_spec_previous: nil,
        prd_filename: nil,
        tech_spec_filename: nil,
+       estimate_filename: nil,
        error: nil
      )}
   end
@@ -69,7 +70,8 @@ defmodule JidoPhxWeb.PipelineLive do
            prd: nil,
            prd_previous: nil,
            tech_spec: nil,
-           tech_spec_previous: nil
+           tech_spec_previous: nil,
+           estimate: nil
          )}
 
       {:error, reason} ->
@@ -155,6 +157,7 @@ defmodule JidoPhxWeb.PipelineLive do
        tech_spec_previous: nil,
        prd_filename: nil,
        tech_spec_filename: nil,
+       estimate_filename: nil,
        error: nil
      )}
   end
@@ -190,24 +193,20 @@ defmodule JidoPhxWeb.PipelineLive do
     {:noreply, assign(socket, status: :awaiting_spec_review, tech_spec: tech_spec)}
   end
 
-  def handle_info(
-        {:pipeline_update,
-         %{
-           status: :complete,
-           prd: prd,
-           tech_spec: tech_spec,
-           prd_filename: prd_filename,
-           tech_spec_filename: tech_spec_filename
-         }},
-        socket
-      ) do
+  def handle_info({:pipeline_update, %{status: :awaiting_estimate}}, socket) do
+    {:noreply, assign(socket, status: :awaiting_estimate)}
+  end
+
+  def handle_info({:pipeline_update, %{status: :complete} = payload}, socket) do
     {:noreply,
      assign(socket,
        status: :complete,
-       prd: prd,
-       tech_spec: tech_spec,
-       prd_filename: prd_filename,
-       tech_spec_filename: tech_spec_filename
+       prd: payload.prd,
+       tech_spec: payload.tech_spec,
+       estimate: payload.estimate,
+       prd_filename: payload.prd_filename,
+       tech_spec_filename: payload.tech_spec_filename,
+       estimate_filename: payload.estimate_filename
      )}
   end
 

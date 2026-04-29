@@ -12,6 +12,8 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
 
   # Ignore child.started for any other child module
 
+  alias JidoPhx.ProductAgent.Agents.EstimatorAgent
+
   use Jido.Action,
     name: "child_started",
     schema: [
@@ -47,6 +49,17 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
       Jido.Signal.new!(
         "tl.generate_spec",
         %{prd: meta.prd, run_id: meta.run_id},
+        source: "/coordinator"
+      )
+
+    {:ok, %{}, [Directive.emit_to_pid(signal, pid)]}
+  end
+
+  def run(%{child_module: EstimatorAgent, pid: pid, meta: meta}, _context) do
+    signal =
+      Jido.Signal.new!(
+        "estimator.generate_estimate",
+        %{tech_spec: meta.tech_spec},
         source: "/coordinator"
       )
 

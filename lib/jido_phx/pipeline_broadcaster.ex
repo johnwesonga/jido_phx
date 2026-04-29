@@ -16,6 +16,7 @@ defmodule JidoPhx.PipelineBroadcaster do
     :awaiting_prd_review   — prd: String.t()
     :awaiting_spec         — no extra fields (LLM generating)
     :awaiting_spec_review  — tech_spec: String.t()
+    :awaiting_estimate       — no extra fields
     :complete              — prd: String.t(), tech_spec: String.t()
   """
 
