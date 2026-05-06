@@ -20,6 +20,11 @@ if System.get_env("PHX_SERVER") do
   config :jido_phx, JidoPhxWeb.Endpoint, server: true
 end
 
+config :jido_phx, :embeddings,
+  base_url: System.get_env("EMBEDDINGS_BASE_URL", "http://localhost:1234/v1"),
+  api_key: System.get_env("EMBEDDINGS_API_KEY", "lm-studio"),
+  model: System.get_env("EMBEDDINGS_MODEL", "nomic-ai/text-embedding-nomic-embed-text-v2-moe")
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

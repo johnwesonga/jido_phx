@@ -19,38 +19,21 @@ defmodule JidoPhx.ProductAgent.Actions.GenerateSpecAction do
 
   @model "anthropic:claude-sonnet-4-20250514"
 
-  @generate_system """
-  You are a senior Technical Lead. Based on the PRD the user provides, write a
-  detailed Technical Specification in the following markdown format:
+  @base_skill File.read!("priv/agent_skills/technical_lead.md")
+  @generate_task File.read!("priv/agent_skills/tasks/generate_spec.md")
+  @revise_task File.read!("priv/agent_skills/tasks/revise_spec.md")
 
-  # Technical Specification: <Product Name>
-
-  ## 1. Architecture Overview
-  ## 2. Technology Stack
-  ## 3. Data Models
-  ## 4. API Design
-  ## 5. Component Breakdown
-  ## 6. Implementation Plan
-  ## 7. Security & Compliance
-  ## 8. Observability
-  ## 9. Open Technical Questions
-  ## 10. Out of Scope (Technical)
-  """
-
-  @revise_system """
-  You are a senior Technical Lead. The user will provide a Tech Spec you previously
-  wrote along with reviewer feedback. Revise the spec to address the feedback and
-  return the complete revised Tech Spec in the same markdown format.
-  """
+  @generate_prompt @base_skill <> "\n\n" <> @generate_task
+  @revise_prompt @base_skill <> "\n\n" <> @revise_task
 
   @impl true
   def run(%{prd: prd}, context) when not is_nil(prd) do
-    call_and_emit(prd, @generate_system, context)
+    call_and_emit(prd, @generate_prompt, context)
   end
 
   def run(%{current_spec: current_spec, feedback: feedback}, context) do
     user_message = "Feedback: #{feedback}\n\nCurrent Tech Spec:\n#{current_spec}"
-    call_and_emit(user_message, @revise_system, context)
+    call_and_emit(user_message, @revise_prompt, context)
   end
 
   defp call_and_emit(user_message, system_prompt, context) do
@@ -62,7 +45,7 @@ defmodule JidoPhx.ProductAgent.Actions.GenerateSpecAction do
         id: Application.get_env(:jido_phx, :ai_model, @model),
         base_url: "http://localhost:1234/v1",
         provider: "openai",
-        max_tokens: 16_384,
+        max_tokens: 64_000,
         receive_timeout: :infinity
       })
 

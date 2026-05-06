@@ -11,6 +11,8 @@ config :jido_phx,
   ecto_repos: [JidoPhx.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :jido_phx, JidoPhx.Repo, types: JidoPhx.PostgrexTypes
+
 config :logger, :console,
   format: "[$level] $metadata $message\n",
   metadata: [:module, :function]
@@ -23,7 +25,7 @@ config :jido_action, :default_timeout, 240_000
 
 config :jido_phx,
   anthropic_api_key: System.get_env("ANTHROPIC_API_KEY"),
-  ai_model: "google/gemma-4-e2b"
+  ai_model: "mistralai/devstral-small-2-2512"
 
 # Configures the endpoint
 config :jido_phx, JidoPhxWeb.Endpoint,

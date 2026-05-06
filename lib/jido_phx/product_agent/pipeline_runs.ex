@@ -8,9 +8,10 @@ defmodule JidoPhx.ProductAgent.PipelineRuns do
   import Ecto.Query
 
   alias JidoPhx.Repo
-  alias JidoPhx.ProductAgent.PipelineRun
+  alias JidoPhx.ProductAgent.{PipelineRun, MemoryStore}
 
   @summary_length 200
+  require Logger
 
   # ---------------------------------------------------------------------------
   # Write
@@ -46,20 +47,40 @@ defmodule JidoPhx.ProductAgent.PipelineRuns do
   end
 
   @doc "Mark a run complete with all output filenames."
-  def complete(run_id, prd_filename, tech_spec_filename, estimate_filename) do
+  def complete(
+        run_id,
+        prd,
+        tech_spec,
+        estimate,
+        prd_filename,
+        tech_spec_filename,
+        estimate_filename
+      ) do
     case Repo.get(PipelineRun, run_id) do
       nil ->
         {:error, :not_found}
 
       run ->
-        run
-        |> PipelineRun.changeset(%{
-          status: "complete",
-          prd_filename: prd_filename,
-          tech_spec_filename: tech_spec_filename,
-          estimate_filename: estimate_filename
-        })
-        |> Repo.update()
+        result =
+          run
+          |> PipelineRun.changeset(%{
+            status: "complete",
+            prd: prd,
+            tech_spec: tech_spec,
+            estimate: estimate,
+            prd_filename: prd_filename,
+            tech_spec_filename: tech_spec_filename,
+            estimate_filename: estimate_filename
+          })
+          |> Repo.update()
+
+        # Fire-and-forget embedding in a Task so it doesn't block the pipeline
+        Task.start(fn ->
+          Logger.info("[PipelineRuns] starting background embedding for #{run_id}")
+          MemoryStore.store(run_id, run.requirements)
+        end)
+
+        result
     end
   end
 

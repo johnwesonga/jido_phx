@@ -289,7 +289,7 @@ defmodule JidoPhxWeb.PipelineLive do
                 name="requirements"
                 rows="10"
                 placeholder="e.g. Product: TaskFlow – a team task manager&#10;Target users: small engineering teams&#10;Key features: Kanban board, GitHub integration, Slack notifications"
-                class="w-full rounded-lg border border-gray-300 p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full rounded-lg border text-gray-700 border-gray-300 p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               ><%= @requirements %></textarea>
             </div>
 
@@ -537,7 +537,7 @@ defmodule JidoPhxWeb.PipelineLive do
             <textarea
               name={"q#{idx}"}
               rows="2"
-              class="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              class="w-full rounded-lg border text-gray-700 border-gray-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               placeholder="Your answer..."
             ></textarea>
           </div>
@@ -638,7 +638,7 @@ defmodule JidoPhxWeb.PipelineLive do
             name="feedback"
             rows="2"
             placeholder="Feedback for revision (required if rejecting)..."
-            class="flex-1 rounded-lg border border-gray-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+            class="flex-1 rounded-lg border text-gray-700 border-gray-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
           ></textarea>
           <button
             type="submit"

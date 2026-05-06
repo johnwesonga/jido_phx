@@ -37,7 +37,15 @@ defmodule JidoPhx.ProductAgent.Actions.EstimateCompleteAction do
     full_spec_path = "#{run_id}/#{tech_spec_filename}"
     full_estimate_path = "#{run_id}/#{estimate_filename}"
 
-    case PipelineRuns.complete(run_id, full_prd_path, full_spec_path, full_estimate_path) do
+    case PipelineRuns.complete(
+           run_id,
+           prd,
+           tech_spec,
+           estimate,
+           full_prd_path,
+           full_spec_path,
+           full_estimate_path
+         ) do
       {:ok, _} ->
         Logger.info("[EstimateCompleteAction] run #{run_id} marked complete")
 

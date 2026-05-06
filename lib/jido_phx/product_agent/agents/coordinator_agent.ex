@@ -27,10 +27,12 @@ defmodule JidoPhx.ProductAgent.Agents.CoordinatorAgent do
     schema: [
       run_id: [type: {:or, [:string, nil]}, default: nil],
       requirements: [type: {:or, [:string, nil]}, default: nil],
+      past_context: [type: {:or, [:string, nil]}, default: nil],
       qa_history: [type: {:or, [:string, nil]}, default: nil],
       questions: [type: {:list, :string}, default: []],
       prd: [type: {:or, [:string, nil]}, default: nil],
       tech_spec: [type: {:or, [:string, nil]}, default: nil],
+      estimate: [type: {:or, [:string, nil]}, default: nil],
       status: [type: :atom, default: :idle]
     ]
 

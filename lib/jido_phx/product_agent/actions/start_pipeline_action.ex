@@ -14,7 +14,7 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
   require Logger
 
   alias Jido.Agent.Directive
-  alias JidoPhx.ProductAgent.{PipelineBroadcaster, PipelineRuns}
+  alias JidoPhx.ProductAgent.{PipelineBroadcaster, PipelineRuns, MemoryStore}
 
   @impl true
   def run(%{requirements: requirements, run_id: run_id}, _context) do
@@ -26,6 +26,16 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
         Logger.warning(
           "[StartPipelineAction] failed to persist run #{run_id}: #{inspect(reason)}"
         )
+    end
+
+    # Query memory for similar past runs (non-blocking — returns [] on failure)
+    past_runs = MemoryStore.recall(run_id, requirements)
+    past_context = MemoryStore.format_context(past_runs)
+
+    if past_context do
+      Logger.info(
+        "[StartPipelineAction] found #{length(past_runs)} similar past run(s) for context"
+      )
     end
 
     PipelineBroadcaster.broadcast(run_id, %{
@@ -44,6 +54,7 @@ defmodule JidoPhx.ProductAgent.Actions.StartPipelineAction do
      %{
        requirements: requirements,
        run_id: run_id,
+       past_context: past_context,
        status: :awaiting_clarification,
        qa_history: nil,
        questions: []

@@ -17,51 +17,15 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
 
   require Logger
 
-  @generate_prompt """
-  You are a senior Product Manager. Based on the requirements below, write a
-  comprehensive Product Requirements Document (PRD) in the following markdown format:
-
-  # Product Requirements Document: <Product Name>
-
-  ## Overview
-  Short paragraph describing the product and its purpose.
-
-  ## Problem Statement
-  What problem does this product solve?
-
-  ## Target Users
-  Who will use this product?
-
-  ## Goals & Success Metrics
-  Numbered list of measurable goals.
-
-  ## Key Features
-  Subsections (###) for each feature with a brief description and acceptance criteria.
-
-  ## Out of Scope
-  Explicit list of things NOT included in this version.
-
-  ## Constraints & Assumptions
-  Technical, time, budget, or other constraints.
-
-  ## Open Questions
-  Anything still unresolved that the team needs to decide.
-
-  ---
-  Requirements:
-  """
-
-  @revise_system """
-  You are a senior Product Manager. You previously wrote a PRD which a reviewer
-  has rejected with the following feedback. Revise the PRD to address the feedback.
-  Return the complete revised PRD in the same markdown format.
-
-  Reviewer feedback:
-  """
-
   alias Jido.Agent.Directive
 
   @default_model "google/gemma-4-e2b"
+  @base_skill File.read!("priv/agent_skills/product_manager.md")
+  @generate_task File.read!("priv/agent_skills/tasks/generate_prd.md")
+  @revise_task File.read!("priv/agent_skills/tasks/revise_prd.md")
+
+  @generate_prompt @base_skill <> "\n\n" <> @generate_task
+  @revise_prompt @base_skill <> "\n\n" <> @revise_task
 
   @impl true
   def run(%{requirements: requirements}, context) when not is_nil(requirements) do
@@ -72,7 +36,7 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
 
   def run(%{current_prd: current_prd, feedback: feedback}, context) do
     user_message = "Feedback: #{feedback}\n\nCurrent PRD:\n#{current_prd}"
-    call_and_emit(user_message, @revise_system, context)
+    call_and_emit(user_message, @revise_prompt, context)
   end
 
   # ---------------------------------------------------------------------------
@@ -99,7 +63,6 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
   end
 
   defp call_llm(user_message, system_prompt) do
-    # model = Application.get_env(:jido_phx, :ai_model, @default_model)
     ReqLLM.put_key(:openai_api_key, "lm-studio")
 
     model =
@@ -107,7 +70,7 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
         id: Application.get_env(:jido_phx, :ai_model, @default_model),
         base_url: "http://localhost:1234/v1",
         provider: "openai",
-        max_tokens: 16_384
+        max_tokens: 64_000
       })
 
     case ReqLLM.stream_text(model, user_message, system_prompt: system_prompt) do
@@ -155,6 +118,7 @@ defmodule JidoPhx.ProductAgent.Actions.GeneratePrdAction do
          ) do
       {:ok, response} ->
         text = ReqLLM.StreamResponse.text(response)
+        Logger.info("[GeneratePrdAction] model: #{model}")
         log_usage(response)
         Logger.info("[GeneratePrdAction] #{byte_size(text)} bytes")
         {:ok, text}

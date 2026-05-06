@@ -67,7 +67,8 @@ defmodule JidoPhx.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:jido, "~> 2.0"},
-      {:req_llm, "~> 1.0"}
+      {:req_llm, "~> 1.0"},
+      {:pgvector, "~> 0.3.0"}
     ]
   end
 

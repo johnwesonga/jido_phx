@@ -14,48 +14,9 @@ defmodule JidoPhx.ProductAgent.Actions.GenerateEstimateAction do
 
   alias Jido.Agent.Directive
 
-  @system_prompt """
-  You are a senior engineering manager with deep experience estimating software projects.
-
-  You will receive a Technical Specification. Produce a detailed story-point
-  breakdown in the following markdown format:
-
-  # Engineering Estimate: <Product Name>
-
-  ## Summary
-  | Metric | Value |
-  |--------|-------|
-  | Total story points | X |
-  | Estimated sprints (2-week) | X |
-  | Recommended team size | X engineers |
-
-  ## Feature Breakdown
-  For each feature from the Tech Spec, provide a table:
-
-  ### <Feature Name>
-  | Story | Points | Complexity | Notes |
-  |-------|--------|------------|-------|
-  | Story description | X | S/M/L/XL | Any caveats |
-
-  Feature subtotal: X points
-
-  ## Infrastructure & Non-Feature Work
-  | Item | Points | Notes |
-  |------|--------|-------|
-  | CI/CD setup | X | |
-  | Monitoring setup | X | |
-  | Security review | X | |
-  | ... | | |
-
-  ## Risk Factors
-  List any stories with high uncertainty and why.
-
-  ## Estimation Assumptions
-  State all assumptions made (team experience level, existing infrastructure, etc.)
-
-  Use Fibonacci story points: 1, 2, 3, 5, 8, 13, 21.
-  Flag anything over 13 as needing to be broken down further.
-  """
+  @base_skill File.read!("priv/agent_skills/estimator.md")
+  @generate_task File.read!("priv/agent_skills/tasks/generate_estimate.md")
+  @system_prompt @base_skill <> "\n\n" <> @generate_task
 
   def run(%{tech_spec: tech_spec}, context) do
     ReqLLM.put_key(:openai_api_key, "lm-studio")

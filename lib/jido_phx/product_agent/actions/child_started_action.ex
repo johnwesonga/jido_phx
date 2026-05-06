@@ -8,6 +8,7 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
   Behaviour:
   - If the child is a ProductManagerAgent → emit `pm.generate_prd` with requirements.
   - If the child is a TechnicalLeadAgent  → emit `tl.generate_spec` with the PRD.
+  - If the child is a EstimatorAgent  → emit `estimator.generate_estimate` with the estimate.
   """
 
   # Ignore child.started for any other child module
@@ -29,11 +30,16 @@ defmodule JidoPhx.ProductAgent.Actions.ChildStartedAction do
   require Logger
 
   @impl true
-  def run(%{child_module: ProductManagerAgent, pid: pid, meta: meta}, _context) do
+  def run(%{child_module: ProductManagerAgent, pid: pid, meta: meta}, context) do
     signal =
       Jido.Signal.new!(
         "pm.analyze_requirements",
-        %{requirements: meta.requirements, qa_history: nil},
+        %{
+          requirements: meta.requirements,
+          qa_history: nil,
+          round: 0,
+          past_context: context.state.past_context
+        },
         source: "/coordinator"
       )
 

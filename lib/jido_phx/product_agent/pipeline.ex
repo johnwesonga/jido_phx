@@ -1,4 +1,4 @@
-defmodule JidoPhx.Pipeline do
+defmodule JidoPhx.ProductAgent.Pipeline do
   @moduledoc """
   Public entry point for the signal-based PM → TL pipeline.
 

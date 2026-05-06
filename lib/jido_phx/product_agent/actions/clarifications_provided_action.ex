@@ -11,7 +11,7 @@ defmodule JidoPhx.ProductAgent.Actions.ClarificationsProvidedAction do
   so it can generate targeted follow-ups or, once satisfied, emit
   `pm.generate_prd` instead.
   """
-  alias JidoPhx.ProductAgent.PipelineBroadcaster
+  alias JidoPhx.ProductAgent.{PipelineBroadcaster, Actions.PersistStatus}
 
   use Jido.Action,
     name: "clarifications_provided",
@@ -24,7 +24,12 @@ defmodule JidoPhx.ProductAgent.Actions.ClarificationsProvidedAction do
 
   @impl true
   def run(%{answers: answers, pm_pid: pm_pid}, context) do
-    %{run_id: run_id, requirements: requirements, questions: questions} = context.state
+    %{
+      run_id: run_id,
+      requirements: requirements,
+      questions: questions,
+      past_context: past_context
+    } = context.state
 
     # Build a human-readable Q&A block to append to history
     new_qa_block =
@@ -42,6 +47,8 @@ defmodule JidoPhx.ProductAgent.Actions.ClarificationsProvidedAction do
         existing -> existing <> "\n\n---\n\n" <> new_qa_block
       end
 
+    PersistStatus.call(run_id, :awaiting_prd)
+
     PipelineBroadcaster.broadcast(run_id, %{
       run_id: run_id,
       status: :awaiting_prd
@@ -51,7 +58,13 @@ defmodule JidoPhx.ProductAgent.Actions.ClarificationsProvidedAction do
     signal =
       Jido.Signal.new!(
         "pm.analyze_requirements",
-        %{requirements: requirements, qa_history: qa_history},
+        # ← thread through
+        %{
+          requirements: requirements,
+          qa_history: qa_history,
+          past_context: past_context,
+          round: 1
+        },
         source: "/coordinator"
       )
 
